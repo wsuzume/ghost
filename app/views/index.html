@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Irto - index</title>
+</head>
+<body>
+    <h3>WHO IS</h3>
+    <h3>THE GHOST??</h3>
+    <form name="room-form" style="border: 1px solid black;">
+        <p><input name="room_name" type="text" placeholder="room" /></p>
+        <p><input name="room_password" type="text" placeholder="room password" /></p>
+        <p><input name="username" type="text" placeholder="username" /></p>
+        <p>
+            <button type="button" onclick="createRoom()">Create</button>
+            <button type="button" onclick="enterRoom()">Enter</button>
+        </p>
+    </form>
+    <script>
+        function createRoom() {
+            postRoomRequest("create");
+        }
+
+        function enterRoom() {
+            postRoomRequest("enter");
+        }
+    </script>
+</body>
+<script>
+function postRoomRequest(command) {
+    let form = document.forms["room-form"];
+    let obj = {
+        command: command,
+        room_name: form.elements["room_name"].value,
+        room_password: form.elements["room_password"].value,
+        username: form.elements["username"].value,
+    };
+    postJSON("/api", JSON.stringify(obj));
+}
+
+function postJSON(url, data) {
+    let req = new XMLHttpRequest();
+    req.open("POST", url);
+    req.setRequestHeader("Content-Type", "application/json");
+    req.responseType = "json";
+    req.onload = () => {
+        console.log(req.response);
+        if (req.status == 200) {
+            console.log("foo!!");
+            console.log(req.response["roomname"]);
+            location.href = "/room/" + req.response["roomname"];
+        }
+        //response_success.innerHTML = "Send Success";
+        //response_status.innerHTML = req.status;
+        //response_json.innerHTML = JSON.stringify(req.response);
+    };
+    req.onerror = () => {
+        //response_success.innerHTML = "Send Error";
+        //response_status.innerHTML = req.status;
+        //response_json.innerHTML = JSON.stringify(req.response);
+    };
+    //post_url.innerHTML = url;
+    //post_message.innerHTML = data;
+    req.send(data);
+}
+</script>
+</html>

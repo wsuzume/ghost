@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Irto - index</title>
+</head>
+<body>
+    <h3>WHO IS</h3>
+    <h3>THE GHOST??</h3>
+    <div>Room name</div>
+    <div>
+        <p>members</p>
+        <div>name</div><div>status(join/watch)</div>
+    </div>
+    <div>
+        <p>vote diagram</p>
+        <div>from</div><div>to</div>
+    </div>
+    <div>
+        <button type="button" onclick="gameUpdate()">Update</button>
+        <button type="button" onclick="gameStart()">Start</button>
+        <button type="button" onclick="gameEnd()">End</button>
+        <button type="button" onclick="gameJoin()">Join</button>
+        <button type="button" onclick="gameWatch()">Watch</button>
+        <button type="button" onclick="gameExit()">Exit</button>
+        <button type="button" onclick="gameVote()">Vote</button>
+        <button type="button" onclick="gameJudge()">Judge</button>
+        <button type="button" onclick="gameExtend()">Extend</button>
+    </div>
+    <div>
+        <h4>WebSocket</h4>
+        <button type="button" onclick="gameUpdateSocket()">Update</button>
+        <button type="button" onclick="gameStartSocket()">Start</button>
+        <button type="button" onclick="gameEndSocket()">End</button>
+        <button type="button" onclick="gameJoinSocket()">Join</button>
+        <button type="button" onclick="gameWatchSocket()">Watch</button>
+        <button type="button" onclick="gameExitSocket()">Exit</button>
+        <button type="button" onclick="gameVoteSocket()">Vote</button>
+        <button type="button" onclick="gameJudgeSocket()">Judge</button>
+        <button type="button" onclick="gameExtendSocket()">Extend</button>
+    </div>
+    <div id="socket-viewer">Connection none</div>
+</body>
+<script>
+function gameUpdate() {
+    postGameRequest("update", "");
+}
+
+function gameStart() {
+    postGameRequest("start", "");
+}
+function gameEnd() {
+    postGameRequest("end", "");
+}
+function gameJoin() {
+    postGameRequest("join", "");
+}
+function gameWatch() {
+    postGameRequest("watch", "");
+}
+function gameExit() {
+    postGameRequest("exit", "");
+}
+
+function gameVote(whom) {
+    postGameRequest("vote", whom);
+}
+function gameJudge() {
+    postGameRequest("judge", "");
+}
+function gameExtend() {
+    postGameRequest("extend", "");
+}
+
+function postGameRequest(command, meta) {
+    let obj = {
+        command: command,
+        meta: meta,
+    };
+    postJSON("/game", JSON.stringify(obj));
+}
+
+function gameUpdateSocket() {
+    postGameRequestSocket("update", "");
+}
+
+function gameStartSocket() {
+    postGameRequestSocket("start", "");
+}
+function gameEndSocket() {
+    postGameRequestSocket("end", "");
+}
+function gameJoinSocket() {
+    postGameRequestSocket("join", "");
+}
+function gameWatchSocket() {
+    postGameRequestSocket("watch", "");
+}
+function gameExitSocket() {
+    postGameRequestSocket("exit", "");
+}
+
+function gameVoteSocket(whom) {
+    postGameRequestSocket("vote", whom);
+}
+function gameJudgeSocket() {
+    postGameRequestSocket("judge", "");
+}
+function gameExtendSocket() {
+    postGameRequestSocket("extend", "");
+}
+
+let socket_viewer = document.getElementById("socket-viewer");
+var socket = new WebSocket("ws://" + window.location.host + "/socket");
+
+socket.onopen = function() {
+    socket_viewer.innerHTML = "Connection OK";
+};
+
+socket.onmessage = function(event) {
+    socket_viewer.innerHTML += "Message: " + event.data + "\n";
+}
+
+function postGameRequestSocket(command, meta) {
+    let obj = {
+        command: command,
+        meta: meta,
+    };
+    socket.send(JSON.stringify(obj));
+}
+
+
+function postJSON(url, data) {
+    let req = new XMLHttpRequest();
+    req.open("POST", url);
+    req.setRequestHeader("Content-Type", "application/json");
+    req.responseType = "json";
+    req.onload = () => {
+        console.log(req.response);
+        switch (req.response["command"]) {
+            case "update":
+                console.log("update");
+                console.log(req.response)
+                break;
+            case "exit":
+                location.href = "/";
+                break;
+        }
+        //response_success.innerHTML = "Send Success";
+        //response_status.innerHTML = req.status;
+        //response_json.innerHTML = JSON.stringify(req.response);
+    };
+    req.onerror = () => {
+        //response_success.innerHTML = "Send Error";
+        //response_status.innerHTML = req.status;
+        //response_json.innerHTML = JSON.stringify(req.response);
+    };
+    //post_url.innerHTML = url;
+    //post_message.innerHTML = data;
+    req.send(data);
+}
+</script>
+</html>
