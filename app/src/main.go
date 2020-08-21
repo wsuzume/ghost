@@ -147,12 +147,33 @@ func (r *Room) startBattle() {
 	r.State = RSTATE_BATTLE
 
 	rand.Seed(time.Now().UnixNano())
-	odai_idx = rand.Intn(len(odai))
+	odai_idx := rand.Intn(len(odai))
 
+	x := odai[odai_idx]
+
+	rand.Seed(time.Now().UnixNano())
+	if rand.Intn(2) == 0 {
+		r.A = x.A
+		r.B = x.B
+	} else {
+		r.A = x.B
+		r.B = x.A
+	}
+
+	rand.Seed(time.Now().UnixNano())
+	oni := rand.Intn(len(r.Users))
+
+	i := 0
 	for _, user := range r.Users {
 		if user.state == USTATE_JOIN {
 			user.state = USTATE_BATTLE
+			if i == oni {
+				user.Team = 1
+			} else {
+				user.Team = 0
+			}
 		}
+		i += 1
 	}
 }
 
@@ -162,6 +183,9 @@ func (r *Room) endBattle() {
 	}
 
 	r.State = RSTATE_STANDBY
+
+	r.A = ""
+	r.B = ""
 
 	for _, user := range r.Users {
 		if user.state == USTATE_BATTLE {
