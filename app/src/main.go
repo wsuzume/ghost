@@ -1,26 +1,102 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"math/rand"
 	"net/http"
+	"os"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
+const (
+	USTATE_JOIN = iota
+	USTATE_WATCH
+	USTATE_BATTLE
+)
+
+func ustate(s uint) string {
+	switch s {
+	case USTATE_JOIN:
+		return "join"
+	case USTATE_WATCH:
+		return "watch"
+	case USTATE_BATTLE:
+		return "battle"
+	default:
+		break
+	}
+	return "unrecognized"
+}
+
 type User struct {
 	Name   string
 	Id     uuid.UUID
 	Vote   string
+	Judge  uint
+	Team   uint
 	socket *websocket.Conn
+	state  uint
+}
+
+type UserState struct {
+	Name  string `json:"username"`
+	Vote  string `json:"vote"`
+	Judge uint   `json:"judge"`
+	Team  uint   `json:"team"`
+	State string `json:"state"`
+}
+
+func (u *User) getState() UserState {
+	return UserState{
+		u.Name,
+		u.Vote,
+		u.Judge,
+		u.Team,
+		ustate(u.state),
+	}
+}
+
+const (
+	RSTATE_STANDBY = iota
+	RSTATE_BATTLE
+	RSTATE_TRIAL
+)
+
+func rstate(s uint) string {
+	switch s {
+	case RSTATE_STANDBY:
+		return "standby"
+	case RSTATE_BATTLE:
+		return "battle"
+	case RSTATE_TRIAL:
+		return "trial"
+	default:
+		break
+	}
+	return "unrecognized"
 }
 
 type Room struct {
 	Name     string
 	Password string
 	Users    map[string]*User
-	Channel  chan GameRequest
+	Channel  chan GameResponse
+	State    uint
+	A        string
+	B        string
+}
+
+type RoomState struct {
+	Name  string `json:"roomname"`
+	State string `json:"state"`
+	A     string `json:"a"`
+	B     string `json:"b"`
 }
 
 func (r *Room) broadcast() {
@@ -32,6 +108,66 @@ func (r *Room) broadcast() {
 				user.socket.Close()
 				delete(r.Users, username)
 			}
+		}
+	}
+}
+
+func (r *Room) getState() RoomState {
+	return RoomState{
+		r.Name,
+		rstate(r.State),
+		r.A,
+		r.B,
+	}
+}
+
+func (r *Room) getUsernames() []string {
+	keys := make([]string, 0, len(r.Users))
+	for key := range r.Users {
+		keys = append(keys, key)
+	}
+
+	return keys
+}
+
+func (r *Room) getUserStatus() []UserState {
+	ret := make([]UserState, 0, len(r.Users))
+	for _, user := range r.Users {
+		ret = append(ret, user.getState())
+	}
+
+	return ret
+}
+
+func (r *Room) startBattle() {
+	if r.State == RSTATE_BATTLE {
+		return
+	}
+
+	r.State = RSTATE_BATTLE
+
+	rand.Seed(time.Now().UnixNano())
+	odai_idx = rand.Intn(len(odai))
+
+	for _, user := range r.Users {
+		if user.state == USTATE_JOIN {
+			user.state = USTATE_BATTLE
+		}
+	}
+}
+
+func (r *Room) endBattle() {
+	if r.State == RSTATE_STANDBY {
+		return
+	}
+
+	r.State = RSTATE_STANDBY
+
+	for _, user := range r.Users {
+		if user.state == USTATE_BATTLE {
+			user.state = USTATE_JOIN
+			user.Vote = ""
+			user.Judge = 0
 		}
 	}
 }
@@ -56,15 +192,133 @@ func (req RoomRequest) toRoom() *Room {
 		req.RoomName,
 		req.RoomPassword,
 		map[string]*User{
-			req.UserName: &User{req.UserName, uuid.New(), "", nil},
+			req.UserName: &User{req.UserName, uuid.New(), "", 0, 0, nil, USTATE_JOIN},
 		},
-		make(chan GameRequest),
+		make(chan GameResponse),
+		RSTATE_STANDBY,
+		"",
+		"",
 	}
 }
 
 type GameRequest struct {
 	Command string `json:"command"`
 	Meta    string `json:"meta"`
+}
+
+type GameResponse struct {
+	Command string `json:"command"`
+	Meta    gin.H  `json:"meta"`
+}
+
+func (room *Room) HandleGameRequest(c *gin.Context, session *Session, req GameRequest) (gin.H, error) {
+	var ret gin.H
+
+	user := session.user
+
+	switch req.Command {
+	case "update":
+		ret = gin.H{
+			"command":    "update",
+			"user_state": user.getState(),
+			"room_state": room.getState(),
+			"members":    room.getUserStatus(),
+		}
+		return ret, nil
+	case "start":
+		room.startBattle()
+
+		ret = gin.H{
+			"command":    "start",
+			"user_state": user.getState(),
+			"room_state": room.getState(),
+			"members":    room.getUserStatus(),
+		}
+		return ret, nil
+	case "end":
+		room.endBattle()
+
+		ret = gin.H{
+			"command":    "end",
+			"user_state": user.getState(),
+			"room_state": room.getState(),
+			"members":    room.getUserStatus(),
+		}
+		return ret, nil
+	case "join":
+		user.state = USTATE_JOIN
+
+		ret = gin.H{
+			"command":    "join",
+			"user_state": user.getState(),
+			"room_state": room.getState(),
+			"members":    room.getUserStatus(),
+		}
+		return ret, nil
+	case "watch":
+		user.state = USTATE_WATCH
+
+		ret = gin.H{
+			"command":    "watch",
+			"user_state": user.getState(),
+			"room_state": room.getState(),
+			"members":    room.getUserStatus(),
+		}
+		return ret, nil
+	case "vote":
+		if user.state == USTATE_BATTLE {
+			_, ue := room.Users[req.Meta]
+			if ue {
+				if user.Name != req.Meta {
+					user.Vote = req.Meta
+				}
+			}
+		}
+		ret = gin.H{
+			"command":    "vote",
+			"user_state": user.getState(),
+			"room_state": room.getState(),
+			"members":    room.getUserStatus(),
+		}
+		return ret, nil
+	case "judge":
+		if user.state == USTATE_BATTLE {
+			user.Judge = 1
+		}
+		ret = gin.H{
+			"command":    "vote",
+			"user_state": user.getState(),
+			"room_state": room.getState(),
+			"members":    room.getUserStatus(),
+		}
+		return ret, nil
+	case "extend":
+		ret = gin.H{
+			"command":    "vote",
+			"user_state": user.getState(),
+			"room_state": room.getState(),
+			"members":    room.getUserStatus(),
+		}
+		return ret, nil
+	case "exit":
+		delete(room.Users, user.Name)
+		delete(sessionStore, user.Id)
+
+		if len(room.Users) == 0 {
+			delete(roomDatabase, room.Name)
+		}
+
+		c.SetCookie("who-is-the-ghost", "", -1, "/", "", false, false)
+
+		ret = gin.H{
+			"command":   "exit",
+			"exit_user": user.Name,
+		}
+		return ret, nil
+
+	}
+
+	return gin.H{}, nil
 }
 
 func ApiPost() gin.HandlerFunc {
@@ -111,7 +365,7 @@ func ApiPost() gin.HandlerFunc {
 				return
 			}
 
-			user := &User{req.UserName, uuid.New(), "", nil}
+			user := &User{req.UserName, uuid.New(), "", 0, 0, nil, USTATE_WATCH}
 			room.Users[user.Name] = user
 			sessionStore[user.Id] = &Session{user, room}
 			c.SetCookie("who-is-the-ghost", user.Id.String(), 300, "/", "", false, false)
@@ -169,70 +423,20 @@ func GamePost() gin.HandlerFunc {
 			return
 		}
 
-		user := session.user
 		room := session.room
 
-		switch req.Command {
-		case "update":
-			keys := make([]string, 0, len(room.Users))
-			for key := range room.Users {
-				keys = append(keys, key)
-			}
+		meta, err := room.HandleGameRequest(c, session, req)
 
-			c.JSON(http.StatusOK, gin.H{
-				"command": "update",
-				"members": keys,
-			})
-			return
-		case "start":
-			c.JSON(http.StatusOK, gin.H{
-				"command": "start",
-			})
-			return
-		case "end":
-			c.JSON(http.StatusOK, gin.H{
-				"command": "end",
-			})
-			return
-		case "join":
-			c.JSON(http.StatusOK, gin.H{
-				"command": "join",
-			})
-			return
-		case "watch":
-			c.JSON(http.StatusOK, gin.H{
-				"command": "watch",
-			})
-			return
-		case "vote":
-			c.JSON(http.StatusOK, gin.H{
-				"command": "vote",
-			})
-			return
-		case "judge":
-			c.JSON(http.StatusOK, gin.H{
-				"command": "judge",
-			})
-			return
-		case "extend":
-			c.JSON(http.StatusOK, gin.H{
-				"command": "extend",
-			})
-			return
-		case "exit":
-			delete(room.Users, user.Name)
-			delete(sessionStore, user.Id)
-
-			if len(room.Users) == 0 {
-				delete(roomDatabase, room.Name)
-			}
-
-			c.SetCookie("who-is-the-ghost", "", -1, "/", "", false, false)
-			c.JSON(http.StatusOK, gin.H{
-				"command": "exit",
-			})
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{})
 			return
 		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"command": req.Command,
+			"meta":    meta,
+		})
+
 	}
 }
 
@@ -285,7 +489,20 @@ func GameSocket() gin.HandlerFunc {
 				delete(room.Users, user.Name)
 				break
 			}
-			room.Channel <- message
+
+			meta, err := room.HandleGameRequest(c, session, message)
+
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{})
+				return
+			}
+
+			response := GameResponse{
+				message.Command,
+				meta,
+			}
+
+			room.Channel <- response
 		}
 	}
 }
@@ -337,6 +554,8 @@ func RoomGet() gin.HandlerFunc {
 }
 
 func main() {
+	readOdai()
+
 	roomDatabase = make(map[string]*Room)
 	sessionStore = make(map[uuid.UUID]*Session)
 
@@ -353,4 +572,28 @@ func main() {
 	r.GET("/socket", GameSocket())
 
 	r.Run(":8080")
+}
+
+type Odai struct {
+	A string
+	B string
+}
+
+var odai []Odai
+
+func readOdai() {
+	fp, err := os.Open("src/odai.txt")
+	if err != nil {
+		panic(err)
+	}
+	defer fp.Close()
+
+	scanner := bufio.NewScanner(fp)
+	for scanner.Scan() {
+		txt := scanner.Text()
+		fmt.Println(txt)
+		buf := strings.Split(txt, ",")
+		odai = append(odai, Odai{buf[0], buf[1]})
+	}
+
 }

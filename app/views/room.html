@@ -7,14 +7,10 @@
 <body>
     <h3>WHO IS</h3>
     <h3>THE GHOST??</h3>
-    <div>Room name</div>
-    <div>
-        <p>members</p>
-        <div>name</div><div>status(join/watch)</div>
-    </div>
-    <div>
-        <p>vote diagram</p>
-        <div>from</div><div>to</div>
+    <div id="card">
+        <div id="card-roomname">Roomname: none</div>
+        <div id="card-username">Username: none</div>
+        <div id="card-members"></div>
     </div>
     <div>
         <button type="button" onclick="gameUpdate()">Update</button>
@@ -98,6 +94,7 @@ function gameWatchSocket() {
 }
 function gameExitSocket() {
     postGameRequestSocket("exit", "");
+    location.href = "/";
 }
 
 function gameVoteSocket(whom) {
@@ -115,10 +112,12 @@ var socket = new WebSocket("ws://" + window.location.host + "/socket");
 
 socket.onopen = function() {
     socket_viewer.innerHTML = "Connection OK";
+    postGameRequestSocket("update", "");
 };
 
 socket.onmessage = function(event) {
-    socket_viewer.innerHTML += "Message: " + event.data + "\n";
+    console.log(event.data);
+    handleResponse(JSON.parse(event.data));
 }
 
 function postGameRequestSocket(command, meta) {
@@ -137,15 +136,7 @@ function postJSON(url, data) {
     req.responseType = "json";
     req.onload = () => {
         console.log(req.response);
-        switch (req.response["command"]) {
-            case "update":
-                console.log("update");
-                console.log(req.response)
-                break;
-            case "exit":
-                location.href = "/";
-                break;
-        }
+        handleResponse(req.response)
         //response_success.innerHTML = "Send Success";
         //response_status.innerHTML = req.status;
         //response_json.innerHTML = JSON.stringify(req.response);
@@ -159,5 +150,55 @@ function postJSON(url, data) {
     //post_message.innerHTML = data;
     req.send(data);
 }
+
+var card_roomname = document.getElementById("card-roomname");
+var card_username = document.getElementById("card-username");
+var card_members = document.getElementById("card-members");
+
+var member_dom = [];
+
+function updateUserInterface(cmd, meta) {
+    card_roomname.innerHTML = "Roomname: " + meta["room_state"]["roomname"] + "[" + meta["room_state"]["state"] + "]";
+    if (cmd == "update" || cmd == "start" || cmd == "end") {
+        card_username.innerHTML = "Username: " + meta["user_state"]["username"] + "[" + meta["user_state"]["state"] + "]";
+    }
+    member_dom = [];
+    card_members.innerHTML = "";
+    members = meta["members"];
+    for (let i in Object.keys(members)) {
+        let m = document.createElement('div');
+        m.textContent = members[i]["username"] + "[" + members[i]["state"] + "]";
+        card_members.appendChild(m);
+        console.log(members[i]);
+    }
+}
+
+function handleResponse(response) {
+    cmd = response["command"];
+    console.log("receive:", cmd);
+    switch (cmd) {
+        case "update":
+            updateUserInterface(cmd, response["meta"]);
+            break;
+        case "join":
+            updateUserInterface(cmd, response["meta"]);
+            break;
+        case "watch":
+            updateUserInterface(cmd, response["meta"]);
+            break;
+        case "start":
+            updateUserInterface(cmd, response["meta"]);
+            break;
+        case "end":
+            updateUserInterface(cmd, response["meta"]);
+            break;
+        case "exit":
+            updateUserInterface(cmd, response["meta"]);
+            break;
+    }
+
+}
+
+
 </script>
 </html>
