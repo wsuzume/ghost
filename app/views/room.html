@@ -12,6 +12,9 @@
         <div id="card-username">Username: none</div>
         <div id="card-members"></div>
     </div>
+    <div id="game">
+        <div id="game-odai"></div>
+    </div>
     <div>
         <button type="button" onclick="gameUpdate()">Update</button>
         <button type="button" onclick="gameStart()">Start</button>
@@ -155,13 +158,25 @@ var card_roomname = document.getElementById("card-roomname");
 var card_username = document.getElementById("card-username");
 var card_members = document.getElementById("card-members");
 
+var game_odai = document.getElementById("game-odai");
+
 var member_dom = [];
 
-function updateUserInterface(cmd, meta) {
+function updateUserInterface(cmd, auth, meta) {
     card_roomname.innerHTML = "Roomname: " + meta["room_state"]["roomname"] + "[" + meta["room_state"]["state"] + "]";
-    if (cmd == "update" || cmd == "start" || cmd == "end") {
-        card_username.innerHTML = "Username: " + meta["user_state"]["username"] + "[" + meta["user_state"]["state"] + "]";
+    card_username.innerHTML = "Username: " + auth["username"] + "[" + auth["state"] + "]";
+
+    if (cmd == "start") {
+        team = auth["team"];
+        if (team == 0) {
+            game_odai.innerHTML = "Your keyword: " + meta["room_state"]["a"];
+        } else {
+            game_odai.innerHTML = "Your keyword: " + meta["room_state"]["b"];
+        }
+    } else {
+        game_odai.innerHTML = "Your keyword: none";
     }
+
     member_dom = [];
     card_members.innerHTML = "";
     members = meta["members"];
@@ -175,25 +190,26 @@ function updateUserInterface(cmd, meta) {
 
 function handleResponse(response) {
     cmd = response["command"];
+    auth = response["auth"]
     console.log("receive:", cmd);
     switch (cmd) {
         case "update":
-            updateUserInterface(cmd, response["meta"]);
+            updateUserInterface(cmd, auth, response["meta"]);
             break;
         case "join":
-            updateUserInterface(cmd, response["meta"]);
+            updateUserInterface(cmd, auth, response["meta"]);
             break;
         case "watch":
-            updateUserInterface(cmd, response["meta"]);
+            updateUserInterface(cmd, auth, response["meta"]);
             break;
         case "start":
-            updateUserInterface(cmd, response["meta"]);
+            updateUserInterface(cmd, auth, response["meta"]);
             break;
         case "end":
-            updateUserInterface(cmd, response["meta"]);
+            updateUserInterface(cmd, auth, response["meta"]);
             break;
         case "exit":
-            updateUserInterface(cmd, response["meta"]);
+            updateUserInterface(cmd, auth, response["meta"]);
             break;
     }
 

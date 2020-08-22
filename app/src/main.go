@@ -103,6 +103,8 @@ func (r *Room) broadcast() {
 	for {
 		message := <-r.Channel
 		for username, user := range r.Users {
+			user_state := user.getState()
+			message.Auth = &user_state
 			err := user.socket.WriteJSON(message)
 			if err != nil {
 				user.socket.Close()
@@ -160,8 +162,15 @@ func (r *Room) startBattle() {
 		r.B = x.A
 	}
 
+	num_join := 0
+	for _, user := range r.Users {
+		if user.state == USTATE_JOIN {
+			num_join += 1
+		}
+	}
+
 	rand.Seed(time.Now().UnixNano())
-	oni := rand.Intn(len(r.Users))
+	oni := rand.Intn(num_join)
 
 	i := 0
 	for _, user := range r.Users {
@@ -172,8 +181,8 @@ func (r *Room) startBattle() {
 			} else {
 				user.Team = 0
 			}
+			i += 1
 		}
-		i += 1
 	}
 }
 
@@ -183,9 +192,6 @@ func (r *Room) endBattle() {
 	}
 
 	r.State = RSTATE_STANDBY
-
-	r.A = ""
-	r.B = ""
 
 	for _, user := range r.Users {
 		if user.state == USTATE_BATTLE {
@@ -231,8 +237,9 @@ type GameRequest struct {
 }
 
 type GameResponse struct {
-	Command string `json:"command"`
-	Meta    gin.H  `json:"meta"`
+	Command string     `json:"command"`
+	Auth    *UserState `json:"auth"`
+	Meta    gin.H      `json:"meta"`
 }
 
 func (room *Room) HandleGameRequest(c *gin.Context, session *Session, req GameRequest) (gin.H, error) {
@@ -523,6 +530,7 @@ func GameSocket() gin.HandlerFunc {
 
 			response := GameResponse{
 				message.Command,
+				nil,
 				meta,
 			}
 
